@@ -8,6 +8,13 @@ db.version(1).stores({
   transactions: '++id, kind, sourceId, targetSourceId, categoryId, amount, date, note, createdAt',
 })
 
+db.version(2).stores({
+  sources: '++id, name, type, color',
+  categories: '++id, name, kind, icon',
+  transactions: '++id, kind, sourceId, targetSourceId, categoryId, amount, date, note, createdAt',
+  groceries: '++id, name, createdAt',
+})
+
 // Seed default data on first open.
 // ponytail: .then() instead of async/await — async breaks Dexie's transaction zone in populate hooks
 db.on('populate', () =>

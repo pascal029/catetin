@@ -5,6 +5,7 @@ import Transactions from './pages/Transactions'
 import AddTransaction from './pages/AddTransaction'
 import Sources from './pages/Sources'
 import Categories from './pages/Categories'
+import Grocery from './pages/Grocery'
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/add" element={<AddTransaction />} />
         <Route path="/sources" element={<Sources />} />
         <Route path="/categories" element={<Categories />} />
+        <Route path="/grocery" element={<Grocery />} />
       </Routes>
       <BottomNav />
     </>
