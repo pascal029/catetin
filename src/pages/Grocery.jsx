@@ -194,8 +194,8 @@ export default function Grocery() {
 
       {/* Import prompt */}
       {importItems && (
-        <div onClick={() => setImportItems(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: '20px 20px 0 0', padding: '24px 24px calc(24px + var(--safe-bottom))', width: '100%', maxWidth: 480 }}>
+        <div onClick={() => setImportItems(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: '20px 20px 0 0', padding: '24px 24px calc(24px + var(--nav-height) + var(--safe-bottom))', width: '100%', maxWidth: 480 }}>
             <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>Impor daftar belanja?</div>
             <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 12 }}>
               {importItems.length} item akan ditambahkan ke daftar kamu:
@@ -222,8 +222,8 @@ export default function Grocery() {
 
       {/* Confirm clear modal */}
       {confirmClear && (
-        <div onClick={() => setConfirmClear(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: '20px 20px 0 0', padding: '24px 24px calc(24px + var(--safe-bottom))', width: '100%', maxWidth: 480 }}>
+        <div onClick={() => setConfirmClear(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: '20px 20px 0 0', padding: '24px 24px calc(24px + var(--nav-height) + var(--safe-bottom))', width: '100%', maxWidth: 480 }}>
             <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>Hapus semua item?</div>
             <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 }}>Seluruh daftar belanja akan dihapus dan tidak bisa dikembalikan.</div>
             <div style={{ display: 'flex', gap: 10 }}>
