@@ -1,11 +1,32 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
 
 export default function Grocery() {
   const [name, setName] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
-  const items = useLiveQuery(() => db.groceries.orderBy('createdAt').reverse().toArray(), [])
+  const [importItems, setImportItems] = useState(null) // array of names to import
+  const [copied, setCopied] = useState(false)
+
+  const raw = useLiveQuery(() => db.groceries.orderBy('createdAt').toArray(), [])
+
+  // unchecked first (newest first), checked last (newest first)
+  const items = raw ? [
+    ...raw.filter(i => !i.checked).reverse(),
+    ...raw.filter(i => i.checked).reverse(),
+  ] : []
+
+  // Detect ?g= import param on mount
+  useEffect(() => {
+    const param = new URLSearchParams(location.search).get('g')
+    if (!param) return
+    try {
+      const names = JSON.parse(decodeURIComponent(param))
+      if (Array.isArray(names) && names.length > 0) setImportItems(names)
+    } catch {}
+    // Clean URL without reloading
+    history.replaceState(null, '', location.pathname)
+  }, [])
 
   async function handleAdd() {
     const trimmed = name.trim()
@@ -31,7 +52,29 @@ export default function Grocery() {
     setConfirmClear(false)
   }
 
-  const hasItems = (items || []).length > 0
+  async function handleShare() {
+    const names = (raw || []).map(i => i.name)
+    if (!names.length) return
+    const encoded = encodeURIComponent(JSON.stringify(names))
+    const url = `${location.origin}/grocery?g=${encoded}`
+    if (navigator.share) {
+      await navigator.share({ title: 'Daftar Belanja', url }).catch(() => {})
+    } else {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  async function handleImport() {
+    const now = Date.now()
+    await db.groceries.bulkAdd(
+      importItems.map((name, i) => ({ name, checked: false, createdAt: now + i }))
+    )
+    setImportItems(null)
+  }
+
+  const hasItems = items.length > 0
 
   return (
     <div className="page">
@@ -40,14 +83,24 @@ export default function Grocery() {
           <h1 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 18, fontWeight: 700, color: 'var(--text-on-dark)' }}>
             Daftar Belanja
           </h1>
-          {hasItems && (
-            <button
-              onClick={() => setConfirmClear(true)}
-              style={{ fontSize: 12, fontWeight: 600, color: 'rgba(212,74,42,0.85)', background: 'rgba(212,74,42,0.15)', padding: '6px 12px', borderRadius: 8 }}
-            >
-              Hapus Semua
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {hasItems && (
+              <button
+                onClick={handleShare}
+                style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-on-dark-muted)', background: 'rgba(255,255,255,0.12)', padding: '6px 12px', borderRadius: 8 }}
+              >
+                {copied ? '✓ Disalin' : '↗ Bagikan'}
+              </button>
+            )}
+            {hasItems && (
+              <button
+                onClick={() => setConfirmClear(true)}
+                style={{ fontSize: 12, fontWeight: 600, color: 'rgba(212,74,42,0.85)', background: 'rgba(212,74,42,0.15)', padding: '6px 12px', borderRadius: 8 }}
+              >
+                Hapus Semua
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
@@ -82,7 +135,7 @@ export default function Grocery() {
           </div>
         ) : (
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            {(items || []).map((item, i) => (
+            {items.map((item, i) => (
               <div key={item.id}>
                 {i > 0 && <div className="divider" />}
                 <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', gap: 12 }}>
@@ -111,23 +164,52 @@ export default function Grocery() {
         )}
       </div>
 
+      {/* Import prompt */}
+      {importItems && (
+        <div
+          onClick={() => setImportItems(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--surface)', borderRadius: '20px 20px 0 0', padding: '24px 24px calc(24px + var(--safe-bottom))', width: '100%', maxWidth: 480 }}
+          >
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>Impor daftar belanja?</div>
+            <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 12 }}>
+              {importItems.length} item akan ditambahkan ke daftar kamu:
+            </div>
+            <div style={{ maxHeight: 160, overflowY: 'auto', marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {importItems.map((n, i) => (
+                <div key={i} style={{ fontSize: 14, padding: '6px 10px', background: 'var(--surface-2)', borderRadius: 8 }}>{n}</div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setImportItems(null)}
+                style={{ flex: 1, padding: 14, borderRadius: 'var(--radius-sm)', background: 'var(--surface-2)', fontWeight: 600, fontSize: 15 }}
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleImport}
+                style={{ flex: 1, padding: 14, borderRadius: 'var(--radius-sm)', background: 'var(--ground-dark)', color: '#fff', fontWeight: 600, fontSize: 15 }}
+              >
+                Impor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Confirm clear modal */}
       {confirmClear && (
         <div
           onClick={() => setConfirmClear(false)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-            zIndex: 100, paddingBottom: 'var(--safe-bottom)',
-          }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 }}
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{
-              background: 'var(--surface)', borderRadius: '20px 20px 0 0',
-              padding: '24px 24px calc(24px + var(--safe-bottom))',
-              width: '100%', maxWidth: 480,
-            }}
+            style={{ background: 'var(--surface)', borderRadius: '20px 20px 0 0', padding: '24px 24px calc(24px + var(--safe-bottom))', width: '100%', maxWidth: 480 }}
           >
             <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>Hapus semua item?</div>
             <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 }}>
