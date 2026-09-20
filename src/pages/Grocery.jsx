@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
+import { formatIDR } from '../utils/format'
 
 export default function Grocery() {
   const [name, setName] = useState('')
@@ -8,7 +9,7 @@ export default function Grocery() {
   const [confirmClear, setConfirmClear] = useState(false)
   const [importItems, setImportItems] = useState(null)
   const [copied, setCopied] = useState(false)
-  const amountRef = useRef(null)
+  const [price, setPrice] = useState('')
 
   const raw = useLiveQuery(() => db.groceries.orderBy('createdAt').toArray(), [])
 
@@ -30,20 +31,23 @@ export default function Grocery() {
   async function handleAdd() {
     const trimmed = name.trim()
     if (!trimmed) return
-    await db.groceries.add({ name: trimmed, amount: amount.trim(), checked: false, createdAt: Date.now() })
+    await db.groceries.add({
+      name: trimmed,
+      amount: amount.trim(),
+      estimationPrice: Number(price) || 0,
+      checked: false,
+      createdAt: Date.now(),
+    })
     setName('')
     setAmount('')
+    setPrice('')
   }
 
-  function handleNameKeyDown(e) {
+  function handleKeyDown(e) {
     if (e.key === 'Enter') {
       e.preventDefault()
-      amountRef.current?.focus()
+      handleAdd()
     }
-  }
-
-  function handleAmountKeyDown(e) {
-    if (e.key === 'Enter') handleAdd()
   }
 
   async function handleToggle(item) {
@@ -60,7 +64,7 @@ export default function Grocery() {
   }
 
   async function handleShare() {
-    const payload = (raw || []).map(i => ({ name: i.name, amount: i.amount || '' }))
+    const payload = (raw || []).map(i => ({ name: i.name, amount: i.amount || '', estimationPrice: i.estimationPrice || 0 }))
     if (!payload.length) return
     const encoded = encodeURIComponent(JSON.stringify(payload))
     const url = `${location.origin}/grocery?g=${encoded}`
@@ -79,6 +83,7 @@ export default function Grocery() {
       importItems.map((item, i) => ({
         name: typeof item === 'string' ? item : item.name,
         amount: typeof item === 'string' ? '' : (item.amount || ''),
+        estimationPrice: typeof item === 'string' ? 0 : (Number(item.estimationPrice) || 0),
         checked: false,
         createdAt: now + i,
       }))
@@ -87,6 +92,7 @@ export default function Grocery() {
   }
 
   const hasItems = items.length > 0
+  const totalEstimate = items.reduce((sum, i) => sum + (i.estimationPrice || 0), 0)
 
   return (
     <div className="page">
@@ -109,25 +115,35 @@ export default function Grocery() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ flex: 1, display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
             <input
               className="form-input"
               value={name}
               onChange={e => setName(e.target.value)}
-              onKeyDown={handleNameKeyDown}
+              onKeyDown={handleKeyDown}
               placeholder="Nama item..."
-              style={{ flex: 2, minWidth: 0 }}
             />
-            <input
-              ref={amountRef}
-              className="form-input"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              onKeyDown={handleAmountKeyDown}
-              placeholder="Jumlah"
-              style={{ flex: 1, minWidth: 0 }}
-            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                className="form-input"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Jumlah"
+                style={{ flex: 1, minWidth: 0 }}
+              />
+              <input
+                className="form-input"
+                type="number"
+                inputMode="numeric"
+                value={price}
+                onChange={e => setPrice(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Perkiraan harga"
+                style={{ flex: 1.4, minWidth: 0 }}
+              />
+            </div>
           </div>
           <button
             onClick={handleAdd}
@@ -177,6 +193,16 @@ export default function Grocery() {
                         {item.amount}
                       </span>
                     ) : null}
+                    {item.estimationPrice ? (
+                      <div style={{
+                        fontSize: 13,
+                        marginTop: 2,
+                        color: 'var(--text-secondary)',
+                        textDecoration: item.checked ? 'line-through' : 'none',
+                      }}>
+                        {formatIDR(item.estimationPrice)}
+                      </div>
+                    ) : null}
                   </div>
                   <button
                     onClick={() => handleDelete(item.id)}
@@ -188,6 +214,15 @@ export default function Grocery() {
                 </div>
               </div>
             ))}
+            {totalEstimate > 0 && (
+              <>
+                <div className="divider" />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: 'var(--surface-2)' }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>Total perkiraan</span>
+                  <span style={{ fontSize: 15, fontWeight: 700 }}>{formatIDR(totalEstimate)}</span>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -204,10 +239,14 @@ export default function Grocery() {
               {importItems.map((item, i) => {
                 const n = typeof item === 'string' ? item : item.name
                 const a = typeof item === 'string' ? '' : item.amount
+                const p = typeof item === 'string' ? 0 : Number(item.estimationPrice) || 0
                 return (
-                  <div key={i} style={{ fontSize: 14, padding: '6px 10px', background: 'var(--surface-2)', borderRadius: 8, display: 'flex', justifyContent: 'space-between' }}>
+                  <div key={i} style={{ fontSize: 14, padding: '6px 10px', background: 'var(--surface-2)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <span>{n}</span>
-                    {a && <span style={{ fontWeight: 600, color: 'var(--accent-gold)' }}>{a}</span>}
+                    <span style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                      {a && <span style={{ fontWeight: 600, color: 'var(--accent-gold)' }}>{a}</span>}
+                      {p > 0 && <span style={{ color: 'var(--text-secondary)' }}>{formatIDR(p)}</span>}
+                    </span>
                   </div>
                 )
               })}
