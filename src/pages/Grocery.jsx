@@ -3,6 +3,10 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
 import { formatIDR } from '../utils/format'
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10)
+}
+
 export default function Grocery() {
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
@@ -10,8 +14,15 @@ export default function Grocery() {
   const [importItems, setImportItems] = useState(null)
   const [copied, setCopied] = useState(false)
   const [price, setPrice] = useState('')
+  const [expenseOpen, setExpenseOpen] = useState(false)
+  const [sourceId, setSourceId] = useState('')
+  const [categoryId, setCategoryId] = useState('')
+  const [date, setDate] = useState(todayStr())
+  const [saving, setSaving] = useState(false)
 
   const raw = useLiveQuery(() => db.groceries.orderBy('createdAt').toArray(), [])
+  const sources = useLiveQuery(() => db.sources.toArray(), [])
+  const categories = useLiveQuery(() => db.categories.where('kind').equals('expense').toArray(), [])
 
   const items = raw ? [
     ...raw.filter(i => !i.checked).reverse(),
@@ -35,6 +46,7 @@ export default function Grocery() {
       name: trimmed,
       amount: amount.trim(),
       estimationPrice: Number(price) || 0,
+      actualPrice: 0,
       checked: false,
       createdAt: Date.now(),
     })
@@ -48,6 +60,10 @@ export default function Grocery() {
       e.preventDefault()
       handleAdd()
     }
+  }
+
+  async function handleActualPrice(item, value) {
+    await db.groceries.update(item.id, { actualPrice: Number(value.replace(/\D/g, '')) || 0 })
   }
 
   async function handleToggle(item) {
@@ -84,6 +100,7 @@ export default function Grocery() {
         name: typeof item === 'string' ? item : item.name,
         amount: typeof item === 'string' ? '' : (item.amount || ''),
         estimationPrice: typeof item === 'string' ? 0 : (Number(item.estimationPrice) || 0),
+        actualPrice: 0,
         checked: false,
         createdAt: now + i,
       }))
@@ -93,6 +110,25 @@ export default function Grocery() {
 
   const hasItems = items.length > 0
   const totalEstimate = items.reduce((sum, i) => sum + (i.estimationPrice || 0), 0)
+  const totalActual = items.reduce((sum, i) => sum + (i.actualPrice || 0), 0)
+
+  async function handleSaveExpense() {
+    if (!totalActual || !sourceId || !categoryId) return
+    setSaving(true)
+    await db.transactions.add({
+      kind: 'expense',
+      sourceId: parseInt(sourceId, 10),
+      targetSourceId: null,
+      categoryId: parseInt(categoryId, 10),
+      amount: totalActual,
+      date,
+      note: `Belanja ${items.length} item`,
+      createdAt: Date.now(),
+    })
+    await db.groceries.clear()
+    setSaving(false)
+    setExpenseOpen(false)
+  }
 
   return (
     <div className="page">
@@ -204,6 +240,15 @@ export default function Grocery() {
                       </div>
                     ) : null}
                   </div>
+                  <input
+                    className="form-input"
+                    inputMode="numeric"
+                    value={item.actualPrice ? item.actualPrice.toLocaleString('id-ID') : ''}
+                    onChange={e => handleActualPrice(item, e.target.value)}
+                    placeholder="Harga asli"
+                    style={{ width: 104, flexShrink: 0, padding: '8px 10px', fontSize: 13, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                    aria-label={`Harga asli ${item.name}`}
+                  />
                   <button
                     onClick={() => handleDelete(item.id)}
                     style={{ color: 'var(--text-secondary)', fontSize: 20, padding: 4, lineHeight: 1, flexShrink: 0 }}
@@ -214,18 +259,86 @@ export default function Grocery() {
                 </div>
               </div>
             ))}
-            {totalEstimate > 0 && (
+            {(totalEstimate > 0 || totalActual > 0) && (
               <>
                 <div className="divider" />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: 'var(--surface-2)' }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>Total perkiraan</span>
-                  <span style={{ fontSize: 15, fontWeight: 700 }}>{formatIDR(totalEstimate)}</span>
+                <div style={{ padding: '14px 16px', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {totalEstimate > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>Total perkiraan</span>
+                      <span style={{ fontSize: 15, fontWeight: 700 }}>{formatIDR(totalEstimate)}</span>
+                    </div>
+                  )}
+                  {totalActual > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>Total belanja</span>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent-green)' }}>{formatIDR(totalActual)}</span>
+                    </div>
+                  )}
                 </div>
               </>
             )}
           </div>
         )}
+
+        {totalActual > 0 && (
+          <button
+            className="btn-primary"
+            onClick={() => setExpenseOpen(true)}
+            style={{ marginTop: 16 }}
+          >
+            Catat sebagai pengeluaran
+          </button>
+        )}
       </div>
+
+      {/* Record as expense */}
+      {expenseOpen && (
+        <div onClick={() => setExpenseOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: '20px 20px 0 0', padding: '24px 24px calc(24px + var(--nav-height) + var(--safe-bottom))', width: '100%', maxWidth: 480 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Catat sebagai pengeluaran</div>
+            <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
+              {formatIDR(totalActual)} dari {items.length} item. Daftar belanja akan dikosongkan setelah disimpan.
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 12 }}>
+              <label className="form-label">Sumber Dana</label>
+              <select className="form-input" value={sourceId} onChange={e => setSourceId(e.target.value)}>
+                <option value="">Pilih sumber...</option>
+                {(sources || []).map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 12 }}>
+              <label className="form-label">Kategori</label>
+              <select className="form-input" value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+                <option value="">Pilih kategori...</option>
+                {(categories || []).map(c => (
+                  <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 20 }}>
+              <label className="form-label">Tanggal</label>
+              <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} max={todayStr()} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setExpenseOpen(false)} style={{ flex: 1, padding: 14, borderRadius: 'var(--radius-sm)', background: 'var(--surface-2)', fontWeight: 600, fontSize: 15 }}>Batal</button>
+              <button
+                onClick={handleSaveExpense}
+                disabled={!sourceId || !categoryId || saving}
+                style={{ flex: 1, padding: 14, borderRadius: 'var(--radius-sm)', background: sourceId && categoryId ? 'var(--accent-green)' : 'var(--surface-2)', color: sourceId && categoryId ? '#fff' : 'var(--text-secondary)', fontWeight: 600, fontSize: 15 }}
+              >
+                {saving ? 'Menyimpan...' : 'Simpan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Import prompt */}
       {importItems && (
